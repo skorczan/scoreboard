@@ -5,27 +5,27 @@ public enum GameState {
     PLANNED {
         @Override
         void start(GameContext context) {
-            context.setStartedAt();
             context.setState(RUNNING);
+            context.setStartedAt();
         }
 
         @Override
         void cancel(GameContext context) {
-            context.setCancelledAt();
             context.setState(CANCELLED);
+            context.setCancelledAt();
         }
     },
     RUNNING {
         @Override
         void finish(GameContext context) {
-            context.setFinishedAt();
             context.setState(FINISHED);
+            context.setFinishedAt();
         }
 
         @Override
         void cancel(GameContext context) {
-            context.setCancelledAt();
             context.setState(ABANDONED);
+            context.setCancelledAt();
         }
 
         @Override
@@ -33,9 +33,20 @@ public enum GameState {
             context.setHomeTeamScore(newScore);
         }
 
+
+        @Override
+        void updateHomeTeamScoreByPoints(GameContext context, int gainedPoints) {
+            context.increaseHomeTeamScoreBy(gainedPoints);
+        }
+
         @Override
         void updateAwayTeamScore(GameContext context, int newScore) {
             context.setAwayTeamScore(newScore);
+        }
+
+        @Override
+        void updateAwayTeamScoreByPoints(GameContext context, int gainedPoints) {
+            context.increaseAwayTeamScoreBy(gainedPoints);
         }
     },
     FINISHED,
@@ -58,7 +69,15 @@ public enum GameState {
         throw new UnsupportedOperationException();
     }
 
+    void updateHomeTeamScoreByPoints(GameContext context, int gainedPoints) {
+        throw new UnsupportedOperationException();
+    }
+
     void updateAwayTeamScore(GameContext context, int newScore) {
+        throw new UnsupportedOperationException();
+    }
+
+    void updateAwayTeamScoreByPoints(GameContext context, int gainedPoints) {
         throw new UnsupportedOperationException();
     }
 }

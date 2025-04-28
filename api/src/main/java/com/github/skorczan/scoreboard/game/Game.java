@@ -6,13 +6,32 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.Accessors;
 
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 
 @Getter
 @Accessors(fluent = true)
 public final class Game extends GameContext implements GameSummary {
+
+    private static final VarHandle HOME_TEAM_SCORE;
+
+    private static final VarHandle AWAY_TEAM_SCORE;
+
+    static {
+        try {
+            var lookup = MethodHandles.lookup();
+
+            HOME_TEAM_SCORE = lookup.findVarHandle(Game.class, "homeTeamScore", int.class);
+            AWAY_TEAM_SCORE = lookup.findVarHandle(Game.class, "awayTeamScore", int.class);
+        } catch (ReflectiveOperationException ex) {
+            throw new IllegalStateException("fields homeTeamScore and awayTeamScore are declared in Game class", ex);
+        }
+    }
 
     @Getter(AccessLevel.NONE)
     private final Clock clock;
@@ -21,32 +40,25 @@ public final class Game extends GameContext implements GameSummary {
 
     private final Team awayTeam;
 
+    private final Set<GameObserver> observers = new LinkedHashSet<>();
+
     private volatile GameState state;
 
     private volatile int homeTeamScore;
 
     private volatile int awayTeamScore;
 
-    private Instant plannedAt;
+    private volatile Instant plannedAt;
 
-    private Instant startedAt;
+    private volatile Instant startedAt;
 
-    private Instant finishedAt;
+    private volatile Instant finishedAt;
 
-    private Instant cancelledAt;
-
-    private GameObserver gameObserver;
+    private volatile Instant cancelledAt;
 
     @Builder
-    private Game(Clock clock, Team homeTeam, Team awayTeam, int homeTeamScore, int awayTeamScore,
-                 Instant plannedAt, Instant startedAt, Instant finishedAt, Instant cancelledAt, GameObserver gameObserver) {
-
-        if (clock != null) {
-            this.clock = clock;
-        } else {
-            throw new IllegalArgumentException("clock must be provided");
-        }
-
+    private Game(Team homeTeam, Team awayTeam, int homeTeamScore, int awayTeamScore,
+                 Instant plannedAt, Instant startedAt, Instant finishedAt, Instant cancelledAt, Clock clock) {
         if (homeTeam != null) {
             this.homeTeam = homeTeam;
         } else {
@@ -80,7 +92,7 @@ public final class Game extends GameContext implements GameSummary {
         this.finishedAt = finishedAt;
         this.cancelledAt = cancelledAt;
 
-        this.gameObserver = Objects.requireNonNullElse(gameObserver, GameObserver.NOOP);
+        this.clock = Objects.requireNonNullElseGet(clock, Clock::systemUTC);
     }
 
     public Game start() {
@@ -93,8 +105,18 @@ public final class Game extends GameContext implements GameSummary {
         return this;
     }
 
+    public Game homeTeamScoreIncreaseBy(int pointsGained) {
+        state.updateHomeTeamScoreByPoints(this, pointsGained);
+        return this;
+    }
+
     public Game awayTeamScore(int newAwayTeamScore) {
         state.updateAwayTeamScore(this, newAwayTeamScore);
+        return this;
+    }
+
+    public Game awayTeamScoreIncreaseBy(int pointsGained) {
+        state.updateAwayTeamScoreByPoints(this, pointsGained);
         return this;
     }
 
@@ -108,9 +130,23 @@ public final class Game extends GameContext implements GameSummary {
         return this;
     }
 
+    public Game addObserver(GameObserver gameObserver) {
+        this.observers.add(gameObserver);
+        return this;
+    }
+
+    public Game removeObserver(GameObserver gameObserver) {
+        this.observers.remove(gameObserver);
+        return this;
+    }
+
     @Override
     protected void setState(GameState gameState) {
         this.state = gameState;
+
+        for (var observer: observers) {
+            observer.onStateChanged(this, gameState);
+        }
     }
 
     @Override
@@ -130,12 +166,40 @@ public final class Game extends GameContext implements GameSummary {
 
     @Override
     protected void setHomeTeamScore(int newScore) {
-        this.homeTeamScore = newScore;
+        HOME_TEAM_SCORE.setVolatile(this, newScore);
+
+        for (var observer: observers) {
+            observer.onHomeTeamScoreChanged(this, newScore);
+        }
+    }
+
+    @Override
+    protected void increaseHomeTeamScoreBy(int gainedPoints) {
+        var previousScore = (int) HOME_TEAM_SCORE.getAndAdd(this, gainedPoints);
+        var currentScore = previousScore + gainedPoints;
+
+        for (var observer: observers) {
+            observer.onHomeTeamScoreChanged(this, currentScore);
+        }
     }
 
     @Override
     protected void setAwayTeamScore(int newScore) {
-        this.awayTeamScore = newScore;
+        AWAY_TEAM_SCORE.setVolatile(this, newScore);
+
+        for (var observer: observers) {
+            observer.onAwayTeamScoreChanged(this, newScore);
+        }
+    }
+
+    @Override
+    protected void increaseAwayTeamScoreBy(int gainedPoints) {
+        var previousScore = (int) AWAY_TEAM_SCORE.getAndAdd(this, gainedPoints);
+        var currentScore = previousScore + gainedPoints;
+
+        for (var observer: observers) {
+            observer.onAwayTeamScoreChanged(this, currentScore);
+        }
     }
 
     static GameState selectStateForGivenInstants(Instant startedAt, Instant finishedAt, Instant cancelledAt) {
