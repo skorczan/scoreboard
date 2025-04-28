@@ -19,6 +19,7 @@
         <lombok.version>1.18.38</lombok.version>
         <junit.version>5.11.0</junit.version>
         <assertj.version>3.26.0</assertj.version>
+        <jakarta.annotation.version>3.0.0</jakarta.annotation.version>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -32,6 +33,12 @@
         </dependencies>
     </dependencyManagement>
     <dependencies>
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>${jakarta.annotation.version}</version>
+            <scope>compile</scope>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
